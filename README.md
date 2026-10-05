@@ -260,4 +260,4 @@ A copy made from the template doesn't update by itself. To pick up a newer versi
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+EPL-2.0. See [LICENSE](LICENSE).
