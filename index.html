@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Track grocery prices across shops over time and see which shop is cheaper.">
+  <meta name="theme-color" content="#EDF2EE" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111915" media="(prefers-color-scheme: dark)">
+  <title>PriceWatch</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛒</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 5h4l3.2 15.5a2 2 0 0 0 2 1.5h11.6a2 2 0 0 0 2-1.6L28 10H9" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13" cy="27" r="2.2" fill="currentColor"/><circle cx="23" cy="27" r="2.2" fill="currentColor"/></svg>
+      PriceWatch
+    </div>
+    <div class="conn small muted" id="conn"></div>
+  </header>
+  <nav class="tabs" aria-label="Sections"><div class="tabs-in" role="tablist">
+    <button class="tab" role="tab" data-tab="compare">Compare</button>
+    <button class="tab" role="tab" data-tab="add">Add prices</button>
+    <button class="tab" role="tab" data-tab="prices">Prices</button>
+    <button class="tab" role="tab" data-tab="history">History</button>
+    <button class="tab" role="tab" data-tab="forecast">Forecast</button>
+    <button class="tab" role="tab" data-tab="shops">Shops</button>
+    <button class="tab" role="tab" data-tab="settings">Settings</button>
+  </div></nav>
+  <div class="banner" id="banner"></div>
+  <main id="view" aria-live="polite"></main>
+  <dialog id="dlg"><div class="dlg" id="dlgBody"></div></dialog>
+  <div class="toast" id="toast" hidden role="status"></div>
+  <noscript><p class="banner">PriceWatch needs JavaScript turned on.</p></noscript>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
