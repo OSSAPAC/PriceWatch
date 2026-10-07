@@ -96,9 +96,10 @@ Go to **Shops** and add each shop you visit. If two branches of the same chain h
    - **Shelf or price list** for prices you only looked at
 4. Take or choose photos and tap **Read prices from photo**, or tap **Type prices by hand**.
 5. Check each line:
-   - **Track as** links the line to an item you already track, so its price history stays together. Pick **New item** to add it to your list.
+   - **Product:** start typing and matching items you already track appear below the field, with their latest price. Pick one with a tap, or with the arrow keys and Enter, so its price history stays together. Pick **+ New item** to add it to your list instead. A label under the field shows whether the line adds to an **Existing item** or creates a **New item**.
+   - **Amount** is what the price is for: `500 g`, `2 L`, `0.85 kg`, `12 items`, or `1 items` for something with no size.
+   - **Unit price** shows the result, such as `$1.55/L`.
    - **Price paid** is what one pack cost, or the line total for something weighed.
-   - **Amount** is what that price is for: `500 g`, `2 L`, `0.85 kg`, `12 items`, or `1 items` for something with no size. The **Unit price** next to it shows the result, such as `$1.55/L`.
    - Tick **Only here** for things only this shop sells, such as a shop's own brand. These items are never compared with other shops.
 6. Tap **Save prices**. Each save is one commit in your repository.
 

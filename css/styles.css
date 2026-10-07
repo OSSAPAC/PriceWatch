@@ -120,8 +120,21 @@ td.r, th.r { text-align: right; }
 td.c, th.c { text-align: center; }
 table.review td { padding: 6px; }
 table.review .input { padding: 6px 8px; }
-.w-name { min-width: 190px; }
-.w-item { min-width: 170px; }
+.w-name { min-width: 240px; vertical-align: top; }
+table.review td { vertical-align: top; }
+
+/* product search */
+.combo { display: flex; flex-direction: column; gap: 4px; }
+.sugg { list-style: none; margin: 0; padding: 0; border: 1.5px solid var(--line); border-radius: 9px; background: var(--surface); max-height: 260px; overflow-y: auto; }
+.sugg .opt { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; cursor: pointer; }
+.sugg .opt + .opt { border-top: 1px solid var(--line); }
+.sugg .opt.active, .sugg .opt:hover { background: var(--soft); }
+.sugg .opt b { font-weight: 700; }
+.sugg .opt.new { color: var(--leaf); font-weight: 700; }
+.sugg .opt .muted { white-space: nowrap; }
+.lchip { display: inline-block; font-size: .78rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; }
+.lchip.existing { background: var(--soft); color: var(--leaf); }
+.lchip.new { background: var(--tag); color: var(--tag-ink); }
 .w-price { width: 110px; }
 .w-qty { width: 150px; }
 .w-amt { min-width: 160px; }
