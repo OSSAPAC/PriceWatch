@@ -259,6 +259,96 @@ function lineUnitPriceHTML(l) {
 const allowedItems = shopId => D.items.filter(i => !i.onlyAt || i.onlyAt === shopId).sort((a, b) => a.name.localeCompare(b.name));
 const matchItem = (name, shopId) => allowedItems(shopId).find(i => norm(i.name) === norm(name))?.id || '';
 
+/* ---- product search in the review table ----
+ * Typing in a Product field lists matching items you already track. Pick one to add this price to its
+ * history, or pick "New item" to start a new one. An exact name match links automatically. */
+let combo = null; // { i: line index, idx: highlighted option, opts: [{ id } | { newItem: true }] }
+
+function suggestions(query, shopId) {
+  const q = norm(query);
+  if (!q) return [];
+  const words = q.split(' ');
+  return allowedItems(shopId)
+    .map(it => ({ it, n: norm(it.name) }))
+    .filter(x => words.every(w => x.n.includes(w)))
+    .sort((a, b) => (b.n.startsWith(q) - a.n.startsWith(q)) || a.it.name.localeCompare(b.it.name))
+    .slice(0, 8)
+    .map(x => x.it);
+}
+
+// Item name with the typed text in bold, e.g. **Full cr**eam Milk.
+function highlight(name, query) {
+  const q = String(query).trim().toLowerCase();
+  const at = q ? name.toLowerCase().indexOf(q) : -1;
+  if (at < 0) return esc(name);
+  return esc(name.slice(0, at)) + '<b>' + esc(name.slice(at, at + q.length)) + '</b>' + esc(name.slice(at + q.length));
+}
+
+// Latest comparable price for an item, at this shop if seen here, otherwise anywhere.
+function hintPrice(it, shopId, idx) {
+  const m = idx.get(it.id);
+  if (!m) return '';
+  const here = m.get(shopId);
+  if (here) return `${uprice(lastOf(here).price, it.compareBy)} here`;
+  let best = null;
+  for (const [sid, a] of m) { const l = lastOf(a); if (!best || l.date > best.l.date) best = { sid, l }; }
+  return best ? `${uprice(best.l.price, it.compareBy)} at ${esc(shopName(best.sid))}` : '';
+}
+
+function comboHTML(i) {
+  if (!combo || combo.i !== i) return '';
+  const l = draft.lines[i];
+  const idx = buildIndex(D);
+  const items = suggestions(l.name, draft.shopId);
+  const exact = items.some(it => norm(it.name) === norm(l.name));
+  combo.opts = [...items.map(it => ({ id: it.id })), ...(!exact && l.name.trim() ? [{ newItem: true }] : [])];
+  if (!combo.opts.length) return '';
+  combo.idx = Math.min(Math.max(combo.idx, 0), combo.opts.length - 1);
+  return `<ul class="sugg" role="listbox" id="sugg-${i}" aria-label="Matching items">${combo.opts.map((o, k) => {
+    const cls = `opt${k === combo.idx ? ' active' : ''}`;
+    if (o.newItem) return `<li class="${cls} new" role="option" id="sugg-${i}-${k}" data-opt="${k}" aria-selected="${k === combo.idx}">+ New item: “${esc(l.name.trim())}”</li>`;
+    const it = itemById(o.id);
+    return `<li class="${cls}" role="option" id="sugg-${i}-${k}" data-opt="${k}" aria-selected="${k === combo.idx}">
+      <span>${highlight(it.name, l.name)}${it.onlyAt ? ' <span class="badge excl">Only here</span>' : ''}</span><span class="muted small num">${hintPrice(it, draft.shopId, idx)}</span></li>`;
+  }).join('')}</ul>`;
+}
+
+// Shows whether a line adds to an existing item or creates a new one.
+const lineChipHTML = l => !l.name.trim() && !l.itemId ? ''
+  : l.itemId ? '<span class="lchip existing">Existing item</span>' : '<span class="lchip new">New item</span>';
+
+// Updates one row's chip, suggestions, "Only here" box and unit price without redrawing the table,
+// so the cursor stays in the field you're typing in.
+function refreshRow(i) {
+  const tr = $(`table.review tr[data-i="${i}"]`); if (!tr) return;
+  const l = draft.lines[i];
+  const it = l.itemId ? itemById(l.itemId) : null;
+  tr.querySelector('.r-chip').innerHTML = lineChipHTML(l);
+  const box = tr.querySelector('.r-sugg'); box.innerHTML = comboHTML(i);
+  const input = tr.querySelector('.r-name');
+  const open = !!box.firstChild;
+  input.setAttribute('aria-expanded', String(open));
+  if (open) input.setAttribute('aria-activedescendant', `sugg-${i}-${combo.idx}`); else input.removeAttribute('aria-activedescendant');
+  const ex = tr.querySelector('.r-excl');
+  ex.checked = it ? it.onlyAt === draft.shopId : !!l.excl;
+  ex.disabled = !!it;
+  ex.title = it ? 'Change this on the item in Prices' : '';
+  tr.querySelector('.r-up').innerHTML = lineUnitPriceHTML(l);
+}
+
+function openCombo(i) { combo = { i, idx: 0, opts: [] }; refreshRow(i); }
+function closeCombo() { const i = combo?.i; combo = null; if (i != null) refreshRow(i); }
+
+function pickOption(i, k) {
+  const o = combo?.opts[k]; const l = draft.lines[i];
+  if (!o || !l) return;
+  if (o.newItem) l.itemId = '';
+  else { const it = itemById(o.id); l.itemId = it.id; l.name = it.name; if (compareByFor(l.unit) !== it.compareBy && it.compareBy !== 'each') l.unit = it.compareBy; }
+  combo = null;
+  $('#review').innerHTML = reviewHTML();
+  $(`table.review tr[data-i="${i}"] .r-amt`)?.focus();
+}
+
 function renderAdd(v) {
   if (!store) { v.innerHTML = emptyState(); return; }
   const d = draft;
@@ -301,18 +391,19 @@ function reviewHTML() {
     const it = l.itemId ? itemById(l.itemId) : null;
     const excl = it ? it.onlyAt === d.shopId : !!l.excl;
     return `<tr data-i="${i}">
-      <td class="w-name"><input class="input r-name" value="${esc(l.name)}" aria-label="Product name"></td>
-      <td class="w-item"><select class="input r-item"><option value="">New item</option>${allowedItems(d.shopId).map(x => `<option value="${esc(x.id)}" ${x.id === l.itemId ? 'selected' : ''}>${esc(x.name)}${x.onlyAt ? ' (only here)' : ''}</option>`).join('')}</select></td>
-      <td class="w-price"><input class="input r-price num" type="number" inputmode="decimal" step="0.01" min="0" value="${l.price ?? ''}" aria-label="Price paid"></td>
+      <td class="w-name"><div class="combo">
+        <input class="input r-name" value="${esc(l.name)}" placeholder="Start typing to search" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sugg-${i}" aria-label="Product">
+        <div class="r-sugg">${comboHTML(i)}</div><div class="r-chip">${lineChipHTML(l)}</div></div></td>
       <td class="w-amt"><div class="amt"><input class="input r-amt num" type="number" inputmode="decimal" step="any" min="0" value="${l.amount ?? 1}" aria-label="Amount"><select class="input r-unit" aria-label="Unit">${UNIT_OPTIONS.map(u => `<option value="${u}" ${u === cleanUnit(l.unit) ? 'selected' : ''}>${u}</option>`).join('')}</select></div></td>
       <td class="r w-up r-up">${lineUnitPriceHTML(l)}</td>
+      <td class="w-price"><input class="input r-price num" type="number" inputmode="decimal" step="0.01" min="0" value="${l.price ?? ''}" aria-label="Price paid"></td>
       <td class="c"><input type="checkbox" class="r-excl" ${excl ? 'checked' : ''} ${it ? 'disabled title="Change this on the item in Prices"' : ''} aria-label="Only sold at this shop"></td>
       <td><button class="iconbtn r-del" aria-label="Remove line">✕</button></td></tr>`;
   }).join('');
   return `<section class="panel stack tight">
-    <div><h3>Check the prices</h3><p class="muted small">Match each line to an item you already track so its price history stays together. “New item” adds it to your list. <strong>Amount</strong> is the pack size or weight the price is for (500 g, 2 L, 0.85 kg, 12 items), so different pack sizes compare fairly per kg, litre or item. Tick “Only here” for things only this shop sells, like its own brand, so they’re never compared with other shops.</p></div>
-    <div class="scroll"><table class="review"><thead><tr><th>Product</th><th>Track as</th><th>Price paid</th><th>Amount</th><th class="r">Unit price</th><th class="c">Only here</th><th><span class="sr">Remove</span></th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="7" class="muted">No lines yet.</td></tr>'}</tbody></table></div>
+    <div><h3>Check the prices</h3><p class="muted small">Start typing a product to search the items you already track, and pick one so its price history stays together. Pick “New item” to add it to your list. <strong>Amount</strong> is the pack size or weight the price is for (500 g, 2 L, 0.85 kg, 12 items), so different pack sizes compare fairly per kg, litre or item. Tick “Only here” for things only this shop sells, like its own brand, so they’re never compared with other shops.</p></div>
+    <div class="scroll"><table class="review"><thead><tr><th>Product</th><th>Amount</th><th class="r">Unit price</th><th>Price paid</th><th class="c">Only here</th><th><span class="sr">Remove</span></th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="6" class="muted">No lines yet.</td></tr>'}</tbody></table></div>
     <div class="actions"><button class="btn quiet" id="addLine">Add a line</button></div>
     <div class="actions"><button class="btn primary" id="saveDraft" ${canWrite() ? '' : 'disabled'}>${d.editing ? 'Save changes' : 'Save prices'}</button><button class="btn quiet" id="discard">Discard</button></div>
   </section>`;
@@ -622,8 +713,8 @@ document.addEventListener('click', async e => {
     case 'refresh': load(); return;
     case 'readBtn': readPhoto(); return;
     case 'stopBtn': draft.ctl?.abort(); return;
-    case 'manualBtn': draft.lines = [blankLine()]; draft.note = ''; render(); return;
-    case 'addLine': draft.lines.push(blankLine()); $('#review').innerHTML = reviewHTML(); return;
+    case 'manualBtn': draft.lines = [blankLine()]; draft.note = ''; combo = null; render(); $('table.review .r-name')?.focus(); return;
+    case 'addLine': draft.lines.push(blankLine()); combo = null; $('#review').innerHTML = reviewHTML(); $(`table.review tr[data-i="${draft.lines.length - 1}"] .r-name`)?.focus(); return;
     case 'discard': { clearPhotos(); const keep = { shopId: draft.shopId, source: draft.source }; draft = { ...freshDraft(), ...keep }; render(); return; }
     case 'saveDraft': t.disabled = true; t.textContent = 'Saving…'; await saveDraft(); if (t.isConnected) { t.disabled = false; t.textContent = 'Save prices'; } return;
     case 'newShopAdd': { const s = await addShop($('#newShopName').value); if (s) { draft.shopId = s.id; draft.addingShop = false; } render(); return; }
@@ -688,7 +779,7 @@ document.addEventListener('click', async e => {
       armConfirm(t, 'Click again to forget', async () => { settings.token = ''; settings.aiKey = ''; saveSettings(); await load(); toast('Keys removed from this device.'); });
       return;
   }
-  if (t.classList.contains('r-del')) { draft.lines.splice(Number(t.closest('tr').dataset.i), 1); $('#review').innerHTML = reviewHTML(); return; }
+  if (t.classList.contains('r-del')) { draft.lines.splice(Number(t.closest('tr').dataset.i), 1); combo = null; $('#review').innerHTML = reviewHTML(); return; }
   if (t.classList.contains('b-del')) { delete basket[t.closest('tr').dataset.bid]; saveBasket(); render(); return; }
   if (t.classList.contains('s-del')) {
     const id = t.closest('tr').dataset.sid;
@@ -708,11 +799,6 @@ document.addEventListener('change', async e => {
   if (t.id === 'dateIn') { draft.date = t.value; return; }
   if (t.name === 'source') { draft.source = t.value; return; }
   if (t.name === 'mode') { $('#ghFields')?.classList.toggle('hidden', t.value === 'local'); return; }
-  if (t.classList.contains('r-item')) {
-    const l = draft.lines[Number(t.closest('tr').dataset.i)]; l.itemId = t.value;
-    if (t.value) l.name = itemById(t.value)?.name || l.name;
-    $('#review').innerHTML = reviewHTML(); return;
-  }
   if (t.classList.contains('r-excl')) { draft.lines[Number(t.closest('tr').dataset.i)].excl = t.checked; return; }
   if (t.classList.contains('r-unit')) { const tr = t.closest('tr'); const l = draft.lines[Number(tr.dataset.i)]; l.unit = t.value; tr.querySelector('.r-up').innerHTML = lineUnitPriceHTML(l); return; }
   if (t.id === 'pshop') { pshop = t.value; renderPriceList(); return; }
@@ -733,7 +819,14 @@ document.addEventListener('input', e => {
   const t = e.target;
   if (t.closest('table.review')) {
     const l = draft.lines[Number(t.closest('tr').dataset.i)]; if (!l) return;
-    if (t.classList.contains('r-name')) l.name = t.value;
+    if (t.classList.contains('r-name')) {
+      const i = Number(t.closest('tr').dataset.i);
+      l.name = t.value;
+      l.itemId = matchItem(t.value, draft.shopId); // exact name match links automatically
+      combo = { i, idx: 0, opts: [] };
+      refreshRow(i);
+      return;
+    }
     if (t.classList.contains('r-price')) l.price = t.value;
     if (t.classList.contains('r-amt')) l.amount = t.value;
     if (t.classList.contains('r-price') || t.classList.contains('r-amt')) t.closest('tr').querySelector('.r-up').innerHTML = lineUnitPriceHTML(l);
@@ -742,6 +835,20 @@ document.addEventListener('input', e => {
   if (t.id === 'q') { pq = t.value; renderPriceList(); }
 });
 document.addEventListener('keydown', e => {
+  if (e.target.classList?.contains('r-name')) {
+    const i = Number(e.target.closest('tr').dataset.i);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!combo || combo.i !== i) { openCombo(i); return; }
+      const n = combo.opts.length; if (!n) return;
+      combo.idx = (combo.idx + (e.key === 'ArrowDown' ? 1 : -1) + n) % n; refreshRow(i);
+      $(`#sugg-${i}-${combo.idx}`)?.scrollIntoView?.({ block: 'nearest' });
+      return;
+    }
+    if (e.key === 'Enter' && combo?.i === i && combo.opts.length) { e.preventDefault(); pickOption(i, combo.idx); return; }
+    if (e.key === 'Escape' && combo) { e.preventDefault(); closeCombo(); return; }
+    return;
+  }
   if (e.key !== 'Enter') return;
   if (e.target.id === 'shopNew') $('#shopAdd')?.click();
   if (e.target.id === 'newShopName') $('#newShopAdd')?.click();
@@ -750,6 +857,21 @@ document.addEventListener('dragover', e => { const d = e.target.closest?.('#drop
 document.addEventListener('dragleave', e => { e.target.closest?.('#drop')?.classList.remove('over'); });
 document.addEventListener('drop', e => { const d = e.target.closest?.('#drop'); if (d) { e.preventDefault(); d.classList.remove('over'); addFiles(e.dataTransfer.files); } });
 $('#dlg').addEventListener('click', e => { if (e.target.id === 'dlg') closeDlg(); });
+// Suggestions: pick with a click or tap (mousedown keeps the cursor in the field), close when leaving the field.
+document.addEventListener('mousedown', e => {
+  const li = e.target.closest?.('.sugg [data-opt]'); if (!li) return;
+  e.preventDefault();
+  pickOption(Number(li.closest('tr').dataset.i), Number(li.dataset.opt));
+});
+document.addEventListener('focusin', e => {
+  const t = e.target;
+  if (t.classList?.contains('r-name')) { const i = Number(t.closest('tr').dataset.i); if (combo?.i !== i) { if (combo) closeCombo(); if (t.value.trim()) openCombo(i); } }
+});
+document.addEventListener('focusout', e => {
+  if (!e.target.classList?.contains('r-name')) return;
+  const i = Number(e.target.closest('tr').dataset.i);
+  setTimeout(() => { if (combo?.i === i && !document.activeElement?.closest?.(`tr[data-i="${i}"] .combo`)) closeCombo(); }, 0);
+});
 // Pick up other people's changes when you come back to the tab.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && store && !saving && !draft.lines && !draft.busy && Date.now() - loadedAt > 120000) load();
